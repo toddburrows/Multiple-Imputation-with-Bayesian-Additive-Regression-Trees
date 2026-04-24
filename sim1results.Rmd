@@ -1,0 +1,584 @@
+---
+title: "Simulation 1 Results"
+author: "Todd Burrows"
+date: "2026-04-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(knitr)
+library(latex2exp)
+
+options(scipen=999)
+```
+
+# Parameters
+```{r, echo=FALSE}
+sim_num <- 2 #Changing Dataset = 2
+n_obs <- 1000
+missp <- 0.4 #20% Missingness
+sims <- 1000
+maxiter <- 10
+ntree <- 50
+B <- 12
+num_burn_in <- 500
+num_iterations_after_burn_in <- 200
+```
+
+```{r, echo=FALSE}
+roundn <- 4
+
+filename <- paste(sim_num,",",n_obs,",",missp,",",sims,",",maxiter,",",ntree,",",B,",",num_burn_in,",",num_iterations_after_burn_in,sep = "")
+filename <- paste(filename, ".rds", sep = "")
+filepath <- paste("/Users/toddb/Library/Mobile Documents/com~apple~CloudDocs/University/3rd Year/Project/Simulations/Sim1/Sims/",filename, sep="")
+
+results <- readRDS(filepath)
+
+true_beta <- results[["true_beta"]]
+
+complete_lm_coeff <- results[["complete_lm_coeff"]]
+complete_lm_vcov <- results[["complete_lm_vcov"]]
+
+mf_coeffs <- results[["mf_coeffs"]]
+mf_bias_tru <- results[["mf_bias_tru"]]
+mf_pb_tru <- results[["mf_pb_tru"]]
+mf_coverage_tot <- results[["mf_coverage_tot"]]
+mf_std_errors <- results[["mf_std_errors"]]
+
+mb_coeffs <- results[["mb_coeffs"]]
+mb_bias_tru <- results[["mb_bias_tru"]]
+mb_pb_tru <- results[["mb_pb_tru"]]
+mb_coverage_tot <- results[["mb_coverage_tot"]]
+mb_std_errors <- results[["mb_std_errors"]]
+
+mfBoot_coeffs <- results[["mfBoot_coeffs"]]
+mfBoot_bias_tru <- results[["mfBoot_bias_tru"]]
+mfBoot_pb_tru <- results[["mfBoot_pb_tru"]]
+mfBoot_coverage_tot <- results[["mfBoot_coverage_tot"]]
+mfBoot_within_final <- results[["mfBoot_within_final"]]
+mfBoot_between_final <- results[["mfBoot_between_final"]]
+mfBoot_total_final <- results[["mfBoot_total_final"]]
+
+mbBoot_coeffs <- results[["mbBoot_coeffs"]]
+mbBoot_bias_tru <- results[["mbBoot_bias_tru"]]
+mbBoot_pb_tru <- results[["mbBoot_pb_tru"]]
+mbBoot_coverage_tot <- results[["mbBoot_coverage_tot"]]
+mbBoot_within_final <- results[["mbBoot_within_final"]]
+mbBoot_between_final <- results[["mbBoot_between_final"]]
+mbBoot_total_final <- results[["mbBoot_total_final"]]
+
+sim_time <- results[["sim_time"]]
+mf_time <- results[["mf_time"]]
+mb_time <- results[["mb_time"]]
+mfBoot_time <- results[["mfBoot_time"]]
+mbBoot_time <- results[["mbBoot_time"]]
+
+ovt <- results[["overall_time"]]
+
+if(sim_num == 1){
+  complete_lm_vcov <- diag(complete_lm_vcov)
+}
+
+coef_names <- names(complete_lm_coeff)
+
+mf_within_final <- colMeans(mf_std_errors^2)
+mb_within_final <- colMeans(mb_std_errors^2)
+
+#rm(results)
+```
+
+```{r,echo=FALSE}
+#Comparison values:
+within_target <- complete_lm_vcov
+
+between_target_mfBoot <- var(mfBoot_coeffs)
+between_target_mbBoot <- var(mbBoot_coeffs)
+
+total_target_mfBoot <- within_target + between_target_mfBoot
+total_target_mbBoot <- within_target + between_target_mbBoot
+```
+
+```{r, echo=FALSE}
+params <- data.frame(SimNumber = sim_num,
+                     Observations = n_obs,
+                     Missingness = missp,
+                     Sims = sims,
+                     maxiter = maxiter,
+                     ntree = ntree,
+                     B = B,
+                     BurnIn = num_burn_in,
+                     PostBurnIn = num_iterations_after_burn_in)
+
+knitr::kable(params)
+```
+
+```{r, echo=FALSE}
+mcses <- function(sims, true_beta, coeffs, coverage){
+  bias_mcse <- apply(coeffs,2, sd) / sqrt(sims)
+  pb_mcse <- 100*apply(coeffs,2, sd) / (sqrt(sims) * abs(true_beta))
+  coverage_mcse <- sqrt((coverage*(1-coverage))/sims)
+  
+  return(list(bias_mcse, pb_mcse, coverage_mcse))
+}
+
+mf_mcse <- mcses(sims = sims, true_beta = true_beta, coeffs = mf_coeffs, coverage = mf_coverage_tot)
+
+mb_mcse <- mcses(sims = sims, true_beta = true_beta, coeffs = mb_coeffs, coverage = mb_coverage_tot)
+
+mfBoot_mcse <- mcses(sims = sims, true_beta = true_beta, coeffs = mfBoot_coeffs, coverage = mfBoot_coverage_tot)
+
+mbBoot_mcse <- mcses(sims = sims, true_beta = true_beta, coeffs = mbBoot_coeffs, coverage = mbBoot_coverage_tot)
+```
+
+
+```{r,echo=FALSE}
+results <- tibble::tibble(Variable = c('$x_1$','','','','$x_2$','','','','${x_3}^2$','','','',"$\\sin(x_4)$",'','',''),
+                    Method = c('$\\textsf{missForest}$','$\\textsf{missBART}$','$\\textsf{missForestBoot}$','$\\textsf{missBARTBoot}$',
+                               '$\\textsf{missForest}$','$\\textsf{missBART}$','$\\textsf{missForestBoot}$','$\\textsf{missBARTBoot}$',
+                               '$\\textsf{missForest}$','$\\textsf{missBART}$','$\\textsf{missForestBoot}$','$\\textsf{missBARTBoot}$',
+                               '$\\textsf{missForest}$','$\\textsf{missBART}$','$\\textsf{missForestBoot}$','$\\textsf{missBARTBoot}$'),
+                    `$\\text{PB}[\\beta_i]$` = c(paste0(round(mf_pb_tru[1], digits = roundn)," (",round(mf_mcse[[2]][1], digits = roundn),")"),
+                                                 paste0(round(mb_pb_tru[1], digits = roundn)," (",round(mb_mcse[[2]][1], digits = roundn),")"),
+                                                 paste0(round(mfBoot_pb_tru[1], digits = roundn)," (",round(mfBoot_mcse[[2]][1], digits = roundn),")"),
+                                                 paste0(round(mbBoot_pb_tru[1], digits = roundn)," (",round(mbBoot_mcse[[2]][1], digits = roundn),")"),
+                                                 paste0(round(mf_pb_tru[2], digits = roundn)," (",round(mf_mcse[[2]][2], digits = roundn),")"),
+                                                 paste0(round(mb_pb_tru[2], digits = roundn)," (",round(mb_mcse[[2]][2], digits = roundn),")"),
+                                                 paste0(round(mfBoot_pb_tru[2], digits = roundn)," (",round(mfBoot_mcse[[2]][2], digits = roundn),")"),
+                                                 paste0(round(mbBoot_pb_tru[2], digits = roundn)," (",round(mbBoot_mcse[[2]][2], digits = roundn),")"),
+                                                 paste0(round(mf_pb_tru[3], digits = roundn)," (",round(mf_mcse[[2]][3], digits = roundn),")"),
+                                                 paste0(round(mb_pb_tru[3], digits = roundn)," (",round(mb_mcse[[2]][3], digits = roundn),")"),
+                                                 paste0(round(mfBoot_pb_tru[3], digits = roundn)," (",round(mfBoot_mcse[[2]][3], digits = roundn),")"),
+                                                 paste0(round(mbBoot_pb_tru[3], digits = roundn)," (",round(mbBoot_mcse[[2]][3], digits = roundn),")"),
+                                                 paste0(round(mf_pb_tru[4], digits = roundn)," (",round(mf_mcse[[2]][4], digits = roundn),")"),
+                                                 paste0(round(mb_pb_tru[4], digits = roundn)," (",round(mb_mcse[[2]][4], digits = roundn),")"),
+                                                 paste0(round(mfBoot_pb_tru[4], digits = roundn)," (",round(mfBoot_mcse[[2]][4], digits = roundn),")"),
+                                                 paste0(round(mbBoot_pb_tru[4], digits = roundn)," (",round(mbBoot_mcse[[2]][4], digits = roundn),")")),
+                    `$\\mathrm{Var}_\\text{T}$` = c("$--$",
+                                                    "$--$",
+                                                    round(mfBoot_total_final[1],digits = roundn),
+                                                    round(mbBoot_total_final[1],digits = roundn),
+                                                    "$--$",
+                                                    "$--$",
+                                                    round(mfBoot_total_final[2],digits = roundn),
+                                                    round(mbBoot_total_final[2],digits = roundn),
+                                                    "$--$",
+                                                    "$--$",
+                                                    round(mfBoot_total_final[3],digits = roundn),
+                                                    round(mbBoot_total_final[3],digits = roundn),
+                                                    "$--$",
+                                                    "$--$",
+                                                    round(mfBoot_total_final[4],digits = roundn),
+                                                    round(mbBoot_total_final[4],digits = roundn)),
+                    `$\\mathrm{Var}_\\text{T}^{\\left(\\text{target}\\right)}$` = c("$--$",
+                                                                                    "$--$",
+                                                                                    as.character(round(total_target_mfBoot[1,1],digits = roundn)),
+                                                                                    as.character(round(total_target_mbBoot[1,1],digits = roundn)),
+                                                                                    "$--$",
+                                                                                    "$--$",
+                                                                                    as.character(round(total_target_mfBoot[2,2],digits = roundn)),
+                                                                                    as.character(round(total_target_mbBoot[2,2],digits = roundn)),
+                                                                                    "$--$",
+                                                                                    "$--$",
+                                                                                    as.character(round(total_target_mfBoot[3,3],digits = roundn)),
+                                                                                    as.character(round(total_target_mbBoot[3,3],digits = roundn)),
+                                                                                    "$--$",
+                                                                                    "$--$",
+                                                                                    as.character(round(total_target_mfBoot[4,4],digits = roundn)),
+                                                                                    as.character(round(total_target_mbBoot[4,4],digits = roundn))),
+                    `$\\mathrm{Var}_\\text{W}$` = c(round(mf_within_final[1],digits = roundn),
+                                                    round(mb_within_final[1],digits = roundn),
+                                                    round(mfBoot_within_final[1],digits = roundn),
+                                                    round(mbBoot_within_final[1],digits = roundn),
+                                                    round(mf_within_final[2],digits = roundn),
+                                                    round(mb_within_final[2],digits = roundn),
+                                                    round(mfBoot_within_final[2],digits = roundn),
+                                                    round(mbBoot_within_final[2],digits = roundn),
+                                                    round(mf_within_final[3],digits = roundn),
+                                                    round(mb_within_final[3],digits = roundn),
+                                                    round(mfBoot_within_final[3],digits = roundn),
+                                                    round(mbBoot_within_final[3],digits = roundn),
+                                                    round(mf_within_final[4],digits = roundn),
+                                                    round(mb_within_final[4],digits = roundn),
+                                                    round(mfBoot_within_final[4],digits = roundn),
+                                                    round(mbBoot_within_final[4],digits = roundn)),
+                    `$\\mathrm{Var}_\\text{W}^{\\left(\\text{target}\\right)}$` = c(as.character(round(within_target[1],digits = roundn)),
+                                                                                    as.character(round(within_target[1],digits = roundn)),
+                                                                                    as.character(round(within_target[1],digits = roundn)),
+                                                                                    as.character(round(within_target[1],digits = roundn)),
+                                                                                    as.character(round(within_target[2],digits = roundn)),
+                                                                                    as.character(round(within_target[2],digits = roundn)),
+                                                                                    as.character(round(within_target[2],digits = roundn)),
+                                                                                    as.character(round(within_target[2],digits = roundn)),
+                                                                                    as.character(round(within_target[3],digits = roundn)),
+                                                                                    as.character(round(within_target[3],digits = roundn)),
+                                                                                    as.character(round(within_target[3],digits = roundn)),
+                                                                                    as.character(round(within_target[3],digits = roundn)),
+                                                                                    as.character(round(within_target[4],digits = roundn)),
+                                                                                    as.character(round(within_target[4],digits = roundn)),
+                                                                                    as.character(round(within_target[4],digits = roundn)),
+                                                                                    as.character(round(within_target[4],digits = roundn))),
+                    `$\\mathrm{Var}_\\text{B}$` = c("$--$","$--$",round(mfBoot_between_final[1],digits = roundn),round(mbBoot_between_final[1],digits = roundn),
+                                                    "$--$","$--$",round(mfBoot_between_final[2],digits = roundn),round(mbBoot_between_final[2],digits = roundn),
+                                                    "$--$","$--$",round(mfBoot_between_final[3],digits = roundn),round(mbBoot_between_final[3],digits = roundn),
+                                                    "$--$","$--$",round(mfBoot_between_final[4],digits = roundn),round(mbBoot_between_final[4],digits = roundn)),
+                    `$\\mathrm{Var}_\\text{B}^{\\left(\\text{target}\\right)}$` = c("$--$",
+                                                                                    "$--$",
+                                                                                    as.character(round(between_target_mfBoot[1,1],digits = roundn)),
+                                                                                    as.character(round(between_target_mbBoot[1,1],digits = roundn)),
+                                                                                    "$--$",
+                                                                                    "$--$",
+                                                                                    as.character(round(between_target_mfBoot[2,2],digits = roundn)),
+                                                                                    as.character(round(between_target_mbBoot[2,2],digits = roundn)),
+                                                                                    "$--$",
+                                                                                    "$--$",
+                                                                                    as.character(round(between_target_mfBoot[3,3],digits = roundn)),
+                                                                                    as.character(round(between_target_mbBoot[3,3],digits = roundn)),
+                                                                                    "$--$",
+                                                                                    "$--$",
+                                                                                    as.character(round(between_target_mfBoot[4,4],digits = roundn)),
+                                                                                    as.character(round(between_target_mbBoot[4,4],digits = roundn))),
+                    `Coverage %` = c(paste0(as.character(round(mf_coverage_tot[1], digits = roundn))," (",round(mf_mcse[[3]][1], digits = roundn),")"),
+                                     paste0(as.character(round(mb_coverage_tot[1], digits = roundn))," (",round(mb_mcse[[3]][1], digits = roundn),")"),
+                                      paste0(as.character(round(mfBoot_coverage_tot[1], digits = roundn))," (",round(mfBoot_mcse[[3]][1], digits = roundn),")"),
+                                      paste0(as.character(round(mbBoot_coverage_tot[1], digits = roundn))," (",round(mbBoot_mcse[[3]][1], digits = roundn),")"),
+                                      paste0(as.character(round(mf_coverage_tot[2], digits = roundn))," (",round(mf_mcse[[3]][2], digits = roundn),")"),
+                                      paste0(as.character(round(mb_coverage_tot[2], digits = roundn))," (",round(mb_mcse[[3]][2], digits = roundn),")"),
+                                      paste0(as.character(round(mfBoot_coverage_tot[2], digits = roundn))," (",round(mfBoot_mcse[[3]][2], digits = roundn),")"),
+                                      paste0(as.character(round(mbBoot_coverage_tot[2], digits = roundn))," (",round(mbBoot_mcse[[3]][2], digits = roundn),")"),
+                                      paste0(as.character(round(mf_coverage_tot[3], digits = roundn))," (",round(mf_mcse[[3]][3], digits = roundn),")"),
+                                      paste0(as.character(round(mb_coverage_tot[3], digits = roundn))," (",round(mb_mcse[[3]][3], digits = roundn),")"),
+                                      paste0(as.character(round(mfBoot_coverage_tot[3], digits = roundn))," (",round(mfBoot_mcse[[3]][3], digits = roundn),")"),
+                                      paste0(as.character(round(mbBoot_coverage_tot[3], digits = roundn))," (",round(mbBoot_mcse[[3]][3], digits = roundn),")"),
+                                      paste0(as.character(round(mf_coverage_tot[4], digits = roundn))," (",round(mf_mcse[[3]][4], digits = roundn),")"),
+                                      paste0(as.character(round(mb_coverage_tot[4], digits = roundn))," (",round(mb_mcse[[3]][4], digits = roundn),")"),
+                                      paste0(as.character(round(mfBoot_coverage_tot[4], digits = roundn))," (",round(mfBoot_mcse[[3]][4], digits = roundn),")"),
+                                      paste0(as.character(round(mbBoot_coverage_tot[4], digits = roundn))," (",round(mbBoot_mcse[[3]][4], digits = roundn),")")))
+
+knitr::kable(results, escape = FALSE)
+```
+
+```{r, echo=FALSE}
+
+sim_out <- 1
+
+sims <- data.frame(Simulation = seq_along(sim_time[sim_out:length(sim_time)]),
+                       Time = sim_time[sim_out:length(sim_time)])
+
+ggplot(data=sims, aes(x = Simulation,y = Time)) +
+  geom_line(colour = "lightgreen") +
+  labs(title = "Plot showing the time take for each simulation.",
+       y = "Time (seconds)")
+```
+
+```{r, echo=FALSE}
+
+sim_out <- 1
+
+sims <- data.frame(Simulation = seq_along(mf_time[sim_out:length(mf_time)]),
+                       Time = mf_time[sim_out:length(mf_time)])
+
+ggplot(data=sims, aes(x = Simulation,y = Time)) +
+  geom_line(colour = "#000080") +
+  labs(title = "Plot showing the time take for each missForest process",
+       y = "Time (seconds)")
+```
+
+```{r, echo=FALSE}
+
+sim_out <- 1
+
+sims <- data.frame(Simulation = seq_along(mb_time[sim_out:length(mb_time)]),
+                       Time = mb_time[sim_out:length(mb_time)])
+
+ggplot(data=sims, aes(x = Simulation,y = Time)) +
+  geom_line(colour = "#f7a502") +
+  labs(title = "Plot showing the time take for each missBART process",
+       y = "Time (seconds)")
+```
+
+```{r, echo=FALSE}
+
+sim_out <- 1
+
+sims <- data.frame(Simulation = seq_along(mfBoot_time[sim_out:length(mfBoot_time)]),
+                       Time = mfBoot_time[sim_out:length(mfBoot_time)])
+
+ggplot(data=sims, aes(x = Simulation,y = Time)) +
+  geom_line(colour = "#e93e6f") +
+  labs(title = "Plot showing the time take for each missForestBoot process",
+       y = "Time (seconds)")
+```
+
+```{r, echo=FALSE}
+
+sim_out <- 1
+
+sims <- data.frame(Simulation = seq_along(mbBoot_time[sim_out:length(mbBoot_time)]),
+                       Time = mbBoot_time[sim_out:length(mbBoot_time)])
+
+ggplot(data=sims, aes(x = Simulation,y = Time)) +
+  geom_line(colour = "#089cc0") +
+  labs(title = "Plot showing the time take for each missBARTBoot process",
+       y = "Time (seconds)")
+```
+
+\hspace{10cm}
+
+```{r, echo=FALSE}
+ovt_mins <- ovt/60
+ovt_hours <- ovt_mins/60
+if(ovt_hours>2){
+  rep_ovt <- ovt_hours
+  com_ovt <- 'hours.'
+} else if(ovt_mins>2){
+  rep_ovt <- ovt_mins
+  com_ovt <- 'minutes.'
+} else{
+  rep_ovt <- ovt
+  com_ovt <- 'seconds.'
+}
+```
+
+### Overall Time: `r rep_ovt` `r com_ovt`
+
+```{r, echo=FALSE}
+vals <- true_beta
+
+colnames(mf_coeffs) <- coef_names
+colnames(mb_coeffs) <- coef_names
+colnames(mfBoot_coeffs) <- coef_names
+colnames(mbBoot_coeffs) <- coef_names
+
+coefs.tb <- bind_rows(
+  as_tibble(mf_coeffs) %>%
+    mutate(Method = "${missForest}$", Sim = row_number()),
+  as_tibble(mb_coeffs) %>%
+    mutate(Method = "${missBART}$", Sim = row_number()),
+  as_tibble(mfBoot_coeffs) %>%
+    mutate(Method = "${missForestBoot}$", Sim = row_number()),
+  as_tibble(mbBoot_coeffs) %>%
+    mutate(Method = "${missBARTBoot}$", Sim = row_number())
+) %>%
+  pivot_longer(
+    cols = all_of(coef_names),
+    names_to = "Estimates",
+    values_to = "coefs"
+  ) %>%
+  mutate(
+    Method = factor(
+      Method,
+      levels = c(
+        "${missForest}$",
+        "${missBART}$",
+        "${missForestBoot}$",
+        "${missBARTBoot}$"
+      )
+    ),
+    Estimates = factor(Estimates, levels = coef_names)
+  )
+
+true.line <- tibble(
+  Estimates = factor(coef_names, levels = coef_names),
+  mean.hat = vals
+)
+
+colours <- c(
+  "${missForest}$" = "#000080",
+  "${missBART}$" = "#f7a502",
+  "${missForestBoot}$" = "#e93e6f",
+  "${missBARTBoot}$" = "#089cc0"
+)
+
+labels.names <- c(
+  "${missForest}$" = TeX("${missForest}$"),
+  "${missBART}$" = TeX("${missBART}$"),
+  "${missForestBoot}$" = TeX("${missForestBoot}$"),
+  "${missBARTBoot}$" = TeX("${missBARTBoot}$")
+)
+
+ggplot(
+  coefs.tb,
+  aes(x = coefs, y = Method, color = Method, fill = Method)
+) +
+  geom_boxplot(width = 0.2, outlier.color = NA, alpha = 0.5) +
+  facet_wrap(
+    vars(Estimates),
+    scales = "free_x",
+    nrow = 2,
+    labeller = label_parsed
+  ) +
+  geom_vline(
+    data = true.line,
+    aes(xintercept = mean.hat),
+    linetype = "dashed"
+  ) +
+  scale_color_manual(values = colours) +
+  scale_fill_manual(values = colours) +
+  scale_y_discrete(labels = labels.names) +
+  guides(color = "none", fill = "none") +
+  labs(x = "Coefficient", y = "Method") +
+  theme(
+    axis.title.x = element_text(size = 26, margin = margin(t = 10)),
+    axis.title.y = element_text(size = 26, margin = margin(r = 10)),
+    axis.text.x = element_text(size = 8),
+    axis.text.y = element_text(size = 18),
+    strip.text.x = element_text(size = 18),
+    panel.spacing.x = unit(0.35, "in"),
+    panel.spacing.y = unit(0.2, "in")
+  )
+```
+
+
+```{r, echo=FALSE}
+true_between <- list(
+  `missForestBoot`   = diag(var(mfBoot_coeffs)),
+  `missBARTBoot` = diag(var(mbBoot_coeffs))
+)
+
+plot_df <- bind_rows(
+  tibble(
+    Estimates = coef_names,
+    Method = "missForestBoot",
+    Between = as.numeric(mfBoot_between_final),
+    True.Between = true_between$`missForestBoot`
+  ),
+  tibble(
+    Estimates = coef_names,
+    Method = "missBARTBoot",
+    Between = as.numeric(mbBoot_between_final),
+    True.Between = true_between$`missBARTBoot`
+  )
+) %>%
+  mutate(
+    reratio.between = Between / True.Between - 1
+  ) %>%
+  pivot_longer(
+    cols = c(reratio.between),
+    names_to = "Type",
+    values_to = "Value"
+  ) %>%
+  mutate(
+    Estimates = factor(Estimates, levels = coef_names),
+    Method = factor(Method, levels = c("missForestBoot","missBARTBoot")),
+    Type = factor(
+      Type,
+      levels = c("reratio.between"),
+      labels = c(
+        "Var[B] / Var[B]^{target} - 1"
+      )
+    )
+  )
+
+colours <- c(
+  "missForestBoot" = "#e93e6f",
+  "missBARTBoot" = "#089cc0"
+)
+
+ggplot(
+  plot_df,
+  aes(x = Method, y = Value, fill = Method)
+) +
+  geom_col(position = "dodge") +
+  facet_grid(
+    Type ~ Estimates,
+    switch = "y",
+    labeller = label_parsed
+  ) +
+  scale_fill_manual(values = colours) +
+  labs(
+    x = "Method",
+    y = "Relative Ratio"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    strip.text.y = element_text(size = 14, face = "bold"),
+    strip.text.x = element_text(size = 12, face = "bold"),
+    panel.spacing = unit(0.2, "in"),
+    legend.position = "none"
+  )
+```
+
+```{r, echo=FALSE}
+true_within <- complete_lm_vcov
+
+plot_df <- bind_rows(
+  tibble(
+    Estimates = coef_names,
+    Method = "missForest",
+    Within = as.numeric(mf_within_final),
+    True.Within = true_within,
+  ),
+  tibble(
+    Estimates = coef_names,
+    Method = "missBART",
+    Within = as.numeric(mb_within_final),
+    True.Within = true_within,
+  ),
+  tibble(
+    Estimates = coef_names,
+    Method = "missForestBoot",
+    Within = as.numeric(mfBoot_within_final),
+    True.Within = true_within,
+  ),
+  tibble(
+    Estimates = coef_names,
+    Method = "missBARTBoot",
+    Within = as.numeric(mbBoot_within_final),
+    True.Within = true_within,
+  )
+) %>%
+  mutate(
+    reratio.within  = Within  / True.Within  - 1
+  ) %>%
+  pivot_longer(
+    cols = c(reratio.within),
+    names_to = "Type",
+    values_to = "Value"
+  ) %>%
+  mutate(
+    Estimates = factor(Estimates, levels = coef_names),
+    Method = factor(Method, levels = c("missForest","missBART","missForestBoot","missBARTBoot")),
+    Type = factor(
+      Type,
+      levels = c("reratio.within"),
+      labels = c(
+        "Var[W] / Var[W]^{target} - 1"
+      )
+    )
+  )
+
+colours <- c(
+  "missForest" = "#000080",
+  "missBART" = "#f7a502",
+  "missForestBoot" = "#e93e6f",
+  "missBARTBoot" = "#089cc0"
+)
+
+ggplot(
+  plot_df,
+  aes(x = Method, y = Value, fill = Method)
+) +
+  geom_col(position = "dodge") +
+  facet_grid(
+    Type ~ Estimates,
+    switch = "y",
+    labeller = label_parsed
+  ) +
+  scale_fill_manual(values = colours) +
+  labs(
+    x = "Method",
+    y = "Relative Ratio"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    strip.text.y = element_text(size = 14, face = "bold"),
+    strip.text.x = element_text(size = 12, face = "bold"),
+    panel.spacing = unit(0.2, "in"),
+    legend.position = "none"
+  )
+```
