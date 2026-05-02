@@ -1,4 +1,4 @@
 # Multiple Imputation with Bayesian Additive Regression Trees
 Dissertation for BSc Mathematics.
 
-Note: the code will be uploaded after the dissertation is submitted. (By 1st May 2026)
+Note: this readme file will be updated by the end of June 2026 with details of how to execute the code in the repository. Todd
